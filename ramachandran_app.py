@@ -179,7 +179,7 @@ def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
         disallowed_percent = disallowed_count / total_count * 100
 
         # -----------------------------
-        # Plotting the Regions and Points
+        # Plotting the Regions and Points (Ramachandran Plot)
         # -----------------------------
         fig, ax = plt.subplots(figsize=(8,8))
 
@@ -233,6 +233,43 @@ def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
         ax.legend(loc='lower left', frameon=True)
         
         st.pyplot(fig)
+        
+        # -----------------------------
+        # Phi/Psi Dihedral Angle Line Plot (NEW SECTION)
+        # -----------------------------
+        st.subheader("Phi (φ) and Psi (ψ) Dihedral Angles Along Sequence")
+        
+        # Sequence index for x-axis
+        sequence_index = np.arange(1, total_count + 1)
+
+        # Create a figure with two subplots stacked vertically, sharing the x-axis
+        fig2, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
+        
+        # --- Plot Phi Angle ---
+        ax1.plot(sequence_index, phi, marker='o', linestyle='-', markersize=3, color='dodgerblue', linewidth=1, label="Phi (φ)")
+        ax1.set_ylabel("Phi (φ) [degrees]")
+        ax1.set_title(f"Dihedral Angle Sequence for {source_name} Chain {chain_id}")
+        ax1.set_ylim(-180, 180)
+        ax1.axhline(0, color='gray', linestyle='--', linewidth=0.5)
+        ax1.grid(True, linestyle=':', alpha=0.6)
+        ax1.legend(loc='upper right')
+
+        # --- Plot Psi Angle ---
+        ax2.plot(sequence_index, psi, marker='o', linestyle='-', markersize=3, color='darkorange', linewidth=1, label="Psi (ψ)")
+        ax2.set_ylabel("Psi (ψ) [degrees]")
+        ax2.set_xlabel("Residue Index")
+        ax2.set_ylim(-180, 180)
+        ax2.axhline(0, color='gray', linestyle='--', linewidth=0.5)
+        ax2.grid(True, linestyle=':', alpha=0.6)
+        ax2.legend(loc='upper right')
+        
+        # Set dynamic x-ticks for better readability on both short and long chains
+        step = max(1, total_count // 10)
+        ax2.set_xticks(np.arange(1, total_count + 1, step))
+        
+        plt.tight_layout()
+        st.pyplot(fig2)
+
 
         # -----------------------------
         # Display Stats
