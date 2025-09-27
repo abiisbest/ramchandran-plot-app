@@ -3,7 +3,6 @@ from Bio.PDB import PDBParser, PPBuilder
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from io import StringIO, TextIOWrapper
 
 st.set_page_config(page_title="Ramachandran Plot App", layout="wide")
 st.title("📊 Ramachandran Plot Generator")
@@ -14,10 +13,7 @@ chain_id = st.text_input("Enter chain ID (default = A)", "A")
 
 def ramachandran_plot(pdb_file, chain_id="A"):
     try:
-        # Wrap the uploaded file so PDBParser can read it
-        if isinstance(pdb_file, bytes):
-            pdb_file = TextIOWrapper(StringIO(pdb_file.decode("utf-8")))
-
+        # Pass the uploaded file directly to PDBParser
         parser = PDBParser(QUIET=True)
         structure = parser.get_structure("protein", pdb_file)
         model = structure[0]
@@ -103,4 +99,4 @@ def ramachandran_plot(pdb_file, chain_id="A"):
 
 # Run function if file uploaded
 if uploaded_file:
-    ramachandran_plot(uploaded_file.read(), chain_id)
+    ramachandran_plot(uploaded_file, chain_id)
