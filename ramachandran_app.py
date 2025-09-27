@@ -15,126 +15,263 @@ st.title("📊 Ramachandran Plot Generator (High Accuracy)")
 pdb_id = st.text_input("Enter PDB ID (e.g., 1UBQ)").upper()
 chain_id = st.text_input("Enter chain ID (default = A)", "A")
 
-# -----------------------------
-# Residue-specific allowed regions (simplified)
-# -----------------------------
-# Format: (phi_min, phi_max, psi_min, psi_max)
-allowed_regions = {
-    "ALL": [(-180, 0, -180, 180)],  # Generic fallback
-    "GLY": [(-180, 0, -180, 180)],  # Glycine flexible
-    "PRO": [(-80, -40, 130, 180)],  # Proline restricted
-    # Right-handed helix typical
-    "ALA": [(-160, -30, -70, -5)],
-    "VAL": [(-160, -30, -70, -5)],
-    "LEU": [(-160, -30, -70, -5)],
-    "ILE": [(-160, -30, -70, -5)],
-    "MET": [(-160, -30, -70, -5)],
-    "CYS": [(-160, -30, -70, -5)],
-    "SER": [(-160, -30, -70, -5)],
-    "THR": [(-160, -30, -70, -5)],
-    "TRP": [(-160, -30, -70, -5)],
-    "PHE": [(-160, -30, -70, -5)],
-    "TYR": [(-160, -30, -70, -5)],
-    "HIS": [(-160, -30, -70, -5)],
-    "ASN": [(-160, -30, -70, -5)],
-    "GLN": [(-160, -30, -70, -5)],
-    "ASP": [(-160, -30, -70, -5)],
-    "GLU": [(-160, -30, -70, -5)],
-    "LYS": [(-160, -30, -70, -5)],
-    "ARG": [(-160, -30, -70, -5)],
-}
+# ----------------------------------------------------
+# 1. ACCURATE RAMACHANDRAN REGIONS (CORE & ALLOWED)
+#    These boundaries are approximated based on statistical data (e.g., MolProbity/PROCHECK)
+#    Each region is defined by (phi_min, phi_max, psi_min, psi_max)
+# ----------------------------------------------------
+
+# CORE (Favored) Regions for non-Glycine, non-Proline residues
+CORE_REGIONS = [
+    # Right-handed Alpha Helix (R_alpha)
+    (-100, -35, -65, -20),
+    # Parallel/Antiparallel Beta Sheet (P_beta/A_beta)
+    (-140, -90, 135, 180),
+    (-140, -90, -180, -160),
+    (-140, -90, 100, 125)
+]
+
+# ALLOWED (Outer boundary) Regions for non-Glycine, non-Proline residues
+ALLOWED_REGIONS = [
+    # Alpha Helix region (wider)
+    (-140, -20, -100, 15),
+    # Beta Sheet region (wider)
+    (-180, -60, 90, 180),
+    (-180, -60, -180, -150),
+    # Left-handed Alpha Helix (L_alpha)
+    (35, 100, 20, 80)
+]
+
+# RESIDUE-SPECIFIC OVERRIDES
+def get_regions(residue):
+    """Returns (core_regions, allowed_regions) for a given residue name."""
+    res = residue.upper()
+    
+    if res == "GLY":
+        # Glycine is symmetrical and much more flexible
+        gly_core = [
+            (-180, -60, -180, 180),
+            (60, 180, -180, 180)
+        ]
+        gly_allowed = [
+            (-180, 180, -180, 180)
+        ]
+        return gly_core, gly_allowed
+    
+    if res == "PRO":
+        # Proline is highly restricted due to cyclic side chain
+        pro_core = [(-80, -35, -30, 30)]
+        pro_allowed = [(-90, -30, -50, 50)]
+        return pro_core, pro_allowed
+    
+    # Default for all other standard residues
+    return CORE_REGIONS, ALLOWED_REGIONS
 
 def is_allowed(residue, phi, psi):
-    residue = residue.upper()
-    regions = allowed_regions.get(residue, allowed_regions["ALL"])
-    for phi_min, phi_max, psi_min, psi_max in regions:
+    """Checks if a phi/psi pair falls within the 'Allowed' region boundary."""
+    _, allowed_regions = get_regions(residue)
+    
+    # Check against the core regions first, then the allowed regions
+    for phi_min, phi_max, psi_min, psi_max in allowed_regions:
         if phi_min <= phi <= phi_max and psi_min <= psi <= psi_max:
-            return True
-    return False
+            return "Allowed"
+    
+    # Check against the tighter CORE regions (useful for the plotting logic,
+    # but for simple 'allowed' count, just use the wider set)
+    core_regions, _ = get_regions(residue)
+    for phi_min, phi_max, psi_min, psi_max in core_regions:
+         if phi_min <= phi <= phi_max and psi_min <= psi <= psi_max:
+            return "Core"
+
+    return "Disallowed"
+
+# -----------------------------
+# PLOTTING HELPER FUNCTION
+# -----------------------------
+
+def plot_regions(ax, regions, color, label):
+    """Draws rectangular Ramachandran regions on the matplotlib axis."""
+    for phi_min, phi_max, psi_min, psi_max in regions:
+        ax.fill_between(
+            [phi_min, phi_max], 
+            psi_min, 
+            psi_max, 
+            color=color, 
+            alpha=0.2, 
+            zorder=0,
+            label=label if label else ""
+        )
+    if label:
+        # Clear label after first drawing to avoid duplicate legends
+        label = None
+    return label
+
 
 # -----------------------------
 # Ramachandran function
 # -----------------------------
 def ramachandran_plot(pdb_file, chain_id="A"):
+    st.markdown("---")
+    st.subheader(f"Results for PDB: **{pdb_id}**, Chain: **{chain_id}**")
+    
     try:
         parser = PDBParser(QUIET=True)
         structure = parser.get_structure("protein", pdb_file)
         model = structure[0]
 
         if chain_id not in model:
-            st.error(f"Chain '{chain_id}' not found.")
+            st.error(f"Chain '{chain_id}' not found. Please check the PDB entry for valid chains.")
             return
 
         chain = model[chain_id]
         ppb = PPBuilder()
+        
+        # Extract Phi/Psi and Residue Names
         phi_psi = []
         residues_list = []
-
+        
         for pp in ppb.build_peptides(chain):
-            phi_psi.extend(pp.get_phi_psi_list())
-            residues_list.extend([res.get_resname() for res in pp])
-
-        phi, psi, residues = [], [], []
-        for i, (ph, ps) in enumerate(phi_psi):
-            if ph is not None and ps is not None:
-                phi.append(np.degrees(ph))
-                psi.append(np.degrees(ps))
-                residues.append(residues_list[i] if i < len(residues_list) else "UNK")
+            # Iterate through residues to align names with angles
+            for i, res in enumerate(pp):
+                # Use phi/psi from the builder's peptide list
+                ph, ps = pp.get_phi_psi_list()[i] 
+                
+                # Check for None (usually N-term, C-term, or proline before Pro)
+                if ph is not None and ps is not None:
+                    phi_psi.append((np.degrees(ph), np.degrees(ps)))
+                    residues_list.append(res.get_resname())
+        
+        phi, psi = zip(*phi_psi) if phi_psi else ([], [])
+        residues = residues_list
+        
+        if not phi:
+            st.warning("No valid phi/psi angles found for this chain (it might be too short or broken).")
+            return
+            
+        # -----------------------------
+        # Calculate Stats and Categorize Points
+        # -----------------------------
+        
+        categories = [is_allowed(res, ph, ps) for res, ph, ps in zip(residues, phi, psi)]
+        
+        core_count = categories.count("Core")
+        allowed_count = categories.count("Allowed") + core_count # Core points are also allowed
+        disallowed_count = categories.count("Disallowed")
+        total_count = len(phi)
 
         # -----------------------------
-        # Plot
+        # Plotting the Regions and Points
         # -----------------------------
-        fig, ax = plt.subplots(figsize=(6,6))
-        ax.scatter(phi, psi, c="blue", s=25, alpha=0.6, label="Residues")
+        fig, ax = plt.subplots(figsize=(8,8))
+
+        # 1. Draw Background Regions (Uses ALA/Standard regions for visual guide)
+        std_core, std_allowed = get_regions("ALA")
+        
+        # Plot Allowed Region (Light Blue)
+        plot_regions(ax, std_allowed, 'skyblue', 'Allowed')
+
+        # Plot Core/Favored Region (Darker Blue)
+        plot_regions(ax, std_core, 'dodgerblue', 'Favored (Core)')
+        
+        # 2. Plot the Actual Phi/Psi Points
+        
+        # Group points for colored plotting
+        data_df = pd.DataFrame({'phi': phi, 'psi': psi, 'category': categories})
+        
+        # Define colors for better visualization
+        color_map = {
+            "Core": "black",
+            "Allowed": "darkorange",
+            "Disallowed": "red"
+        }
+        
+        # Plot each category separately to control z-order and legend
+        for category, color in color_map.items():
+            subset = data_df[data_df['category'] == category]
+            if not subset.empty:
+                 ax.scatter(
+                    subset['phi'], 
+                    subset['psi'], 
+                    c=color, 
+                    s=20, 
+                    alpha=0.7, 
+                    zorder=5, 
+                    label=f'{category} Points'
+                )
+
+
+        # 3. Final Plot Settings
         ax.set_xlim(-180, 180)
         ax.set_ylim(-180, 180)
-        ax.set_xlabel("Phi (φ)")
-        ax.set_ylabel("Psi (ψ)")
-        ax.set_title(f"Ramachandran Plot: {pdb_id} Chain {chain_id}")
-
+        ax.set_xticks(np.arange(-180, 181, 60))
+        ax.set_yticks(np.arange(-180, 181, 60))
+        ax.set_xlabel("Phi (φ) [degrees]")
+        ax.set_ylabel("Psi (ψ) [degrees]")
+        ax.set_title(f"Ramachandran Plot: {pdb_id} Chain {chain_id}", fontsize=14)
+        ax.grid(True, linestyle='--', alpha=0.6)
         ax.axhline(0, color='gray', linewidth=0.5)
         ax.axvline(0, color='gray', linewidth=0.5)
-
+        ax.legend(loc='lower left', frameon=True)
+        
         st.pyplot(fig)
 
         # -----------------------------
-        # Stats with residue-specific regions
+        # Display Stats
         # -----------------------------
-        allowed_count = sum(is_allowed(res, ph, ps) for res, ph, ps in zip(residues, phi, psi))
-
-        st.write(f"📊 Total residues checked: {len(phi)}")
-        st.write(f"✅ Allowed residues: {allowed_count} ({allowed_count/len(phi)*100:.2f}%)")
-        st.write(f"❌ Disallowed residues: {len(phi)-allowed_count}")
+        st.subheader("Analysis Summary")
+        col1, col2, col3 = st.columns(3)
+        
+        col1.metric("Total Residues Checked", total_count)
+        col2.metric(
+            "✅ Favored/Core Percentage", 
+            f"{core_count/total_count*100:.2f}%", 
+            f"{core_count} points"
+        )
+        col3.metric(
+            "⚠️ Outlier/Disallowed", 
+            f"{disallowed_count}", 
+            f"({disallowed_count/total_count*100:.2f}%) points"
+        )
+        
+        st.markdown(f"***Note:*** *The total percentage of **Allowed** residues (Core + Allowed) is **{allowed_count/total_count*100:.2f}**%*")
 
         # -----------------------------
         # Table & CSV
         # -----------------------------
+        st.subheader("Phi/Psi Data Table")
+        
         df = pd.DataFrame({
-            "Residue": residues,
+            "Residue": [f"{res} ({i+1})" for i, res in enumerate(residues)], # Add index for clarity
             "Phi (°)": phi,
-            "Psi (°)": psi
+            "Psi (°)": psi,
+            "Classification": categories
         })
-        st.dataframe(df)
+        st.dataframe(df, use_container_width=True)
 
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Download Phi/Psi angles as CSV",
             data=csv,
-            file_name=f'{pdb_id}_phi_psi.csv',
+            file_name=f'{pdb_id}_{chain_id}_phi_psi.csv',
             mime='text/csv'
         )
 
     except Exception as e:
-        st.error(f"Error processing PDB file: {e}")
+        st.error(f"An error occurred during plot generation: {e}")
 
 # -----------------------------
 # Fetch PDB and run
 # -----------------------------
 if pdb_id:
     url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
-    response = requests.get(url)
-    if response.status_code == 200:
-        pdb_file = StringIO(response.text)
-        ramachandran_plot(pdb_file, chain_id)
-    else:
-        st.error("PDB ID not found!")
+    st.info(f"Fetching PDB file from {url}...")
+    
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            pdb_file = StringIO(response.text)
+            ramachandran_plot(pdb_file, chain_id)
+        else:
+            st.error(f"PDB ID '{pdb_id}' not found or inaccessible. Status code: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        st.error(f"Network error while fetching PDB ID: {e}")
