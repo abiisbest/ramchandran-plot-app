@@ -3,21 +3,21 @@ from Bio.PDB import PDBParser, PPBuilder
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from io import StringIO, TextIOWrapper
 
 st.set_page_config(page_title="Ramachandran Plot App", layout="wide")
 st.title("📊 Ramachandran Plot Generator")
 
-# -----------------------------
 # File upload
-# -----------------------------
 uploaded_file = st.file_uploader("Upload a PDB file", type=["pdb"])
 chain_id = st.text_input("Enter chain ID (default = A)", "A")
 
-# -----------------------------
-# Ramachandran function
-# -----------------------------
 def ramachandran_plot(pdb_file, chain_id="A"):
     try:
+        # Wrap the uploaded file so PDBParser can read it
+        if isinstance(pdb_file, bytes):
+            pdb_file = TextIOWrapper(StringIO(pdb_file.decode("utf-8")))
+
         parser = PDBParser(QUIET=True)
         structure = parser.get_structure("protein", pdb_file)
         model = structure[0]
@@ -43,9 +43,7 @@ def ramachandran_plot(pdb_file, chain_id="A"):
                 psi.append(np.degrees(ps))
                 residues.append(residues_list[i] if i < len(residues_list) else "UNK")
 
-        # -----------------------------
         # Plot Ramachandran
-        # -----------------------------
         fig, ax = plt.subplots(figsize=(6,6))
         ax.scatter(phi, psi, c="blue", s=25, alpha=0.6, label="Residues")
         ax.set_xlim(-180, 180)
@@ -54,7 +52,6 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         ax.set_ylabel("Psi (ψ)")
         ax.set_title("Ramachandran Plot")
 
-        # Simple allowed regions (visual only)
         allowed_regions = [
             {"phi": (-160, -40), "psi": (-80, 50)},  # Beta sheet
             {"phi": (-90, -30), "psi": (-70, 10)},  # Right-handed helix
@@ -73,9 +70,7 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         ax.legend()
         st.pyplot(fig)
 
-        # -----------------------------
         # Stats
-        # -----------------------------
         allowed_count = 0
         for ph, ps in zip(phi, psi):
             for reg in allowed_regions:
@@ -87,9 +82,7 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         st.write(f"✅ Allowed residues: {allowed_count} ({allowed_count/len(phi)*100:.2f}%)")
         st.write(f"❌ Disallowed residues: {len(phi)-allowed_count}")
 
-        # -----------------------------
-        # Table & CSV download
-        # -----------------------------
+        # Table & CSV
         df = pd.DataFrame({
             "Residue": residues,
             "Phi (°)": phi,
@@ -108,8 +101,6 @@ def ramachandran_plot(pdb_file, chain_id="A"):
     except Exception as e:
         st.error(f"Error processing PDB file: {e}")
 
-# -----------------------------
 # Run function if file uploaded
-# -----------------------------
 if uploaded_file:
-    ramachandran_plot(uploaded_file, chain_id)
+    ramachandran_plot(uploaded_file.read(), chain_id)
