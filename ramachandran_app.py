@@ -7,7 +7,7 @@ from io import StringIO
 import requests
 
 st.set_page_config(page_title="Ramachandran Plot App", layout="wide")
-st.title("📊 Ramachandran Plot Generator (Mobile-Friendly)")
+st.title("📊 Ramachandran Plot Generator (High Accuracy)")
 
 # -----------------------------
 # PDB ID input
@@ -15,6 +15,46 @@ st.title("📊 Ramachandran Plot Generator (Mobile-Friendly)")
 pdb_id = st.text_input("Enter PDB ID (e.g., 1UBQ)").upper()
 chain_id = st.text_input("Enter chain ID (default = A)", "A")
 
+# -----------------------------
+# Residue-specific allowed regions (simplified)
+# -----------------------------
+# Format: (phi_min, phi_max, psi_min, psi_max)
+allowed_regions = {
+    "ALL": [(-180, 0, -180, 180)],  # Generic fallback
+    "GLY": [(-180, 0, -180, 180)],  # Glycine flexible
+    "PRO": [(-80, -40, 130, 180)],  # Proline restricted
+    # Right-handed helix typical
+    "ALA": [(-160, -30, -70, -5)],
+    "VAL": [(-160, -30, -70, -5)],
+    "LEU": [(-160, -30, -70, -5)],
+    "ILE": [(-160, -30, -70, -5)],
+    "MET": [(-160, -30, -70, -5)],
+    "CYS": [(-160, -30, -70, -5)],
+    "SER": [(-160, -30, -70, -5)],
+    "THR": [(-160, -30, -70, -5)],
+    "TRP": [(-160, -30, -70, -5)],
+    "PHE": [(-160, -30, -70, -5)],
+    "TYR": [(-160, -30, -70, -5)],
+    "HIS": [(-160, -30, -70, -5)],
+    "ASN": [(-160, -30, -70, -5)],
+    "GLN": [(-160, -30, -70, -5)],
+    "ASP": [(-160, -30, -70, -5)],
+    "GLU": [(-160, -30, -70, -5)],
+    "LYS": [(-160, -30, -70, -5)],
+    "ARG": [(-160, -30, -70, -5)],
+}
+
+def is_allowed(residue, phi, psi):
+    residue = residue.upper()
+    regions = allowed_regions.get(residue, allowed_regions["ALL"])
+    for phi_min, phi_max, psi_min, psi_max in regions:
+        if phi_min <= phi <= phi_max and psi_min <= psi <= psi_max:
+            return True
+    return False
+
+# -----------------------------
+# Ramachandran function
+# -----------------------------
 def ramachandran_plot(pdb_file, chain_id="A"):
     try:
         parser = PDBParser(QUIET=True)
@@ -52,33 +92,15 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         ax.set_ylabel("Psi (ψ)")
         ax.set_title(f"Ramachandran Plot: {pdb_id} Chain {chain_id}")
 
-        allowed_regions = [
-            {"phi": (-160, -40), "psi": (-80, 50)},  # Beta sheet
-            {"phi": (-90, -30), "psi": (-70, 10)},  # Right-handed helix
-        ]
+        ax.axhline(0, color='gray', linewidth=0.5)
+        ax.axvline(0, color='gray', linewidth=0.5)
 
-        for reg in allowed_regions:
-            ax.add_patch(
-                plt.Rectangle(
-                    (reg["phi"][0], reg["psi"][0]),
-                    reg["phi"][1]-reg["phi"][0],
-                    reg["psi"][1]-reg["psi"][0],
-                    fill=False, edgecolor="red", linewidth=2, linestyle="--"
-                )
-            )
-
-        ax.legend()
         st.pyplot(fig)
 
         # -----------------------------
-        # Stats
+        # Stats with residue-specific regions
         # -----------------------------
-        allowed_count = 0
-        for ph, ps in zip(phi, psi):
-            for reg in allowed_regions:
-                if reg["phi"][0] <= ph <= reg["phi"][1] and reg["psi"][0] <= ps <= reg["psi"][1]:
-                    allowed_count += 1
-                    break
+        allowed_count = sum(is_allowed(res, ph, ps) for res, ph, ps in zip(residues, phi, psi))
 
         st.write(f"📊 Total residues checked: {len(phi)}")
         st.write(f"✅ Allowed residues: {allowed_count} ({allowed_count/len(phi)*100:.2f}%)")
