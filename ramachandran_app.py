@@ -97,8 +97,14 @@ def is_allowed(residue, phi, psi):
 # -----------------------------
 
 def plot_regions(ax, regions, color, label):
-    """Draws rectangular Ramachandran regions on the matplotlib axis."""
+    """Draws rectangular Ramachandran regions on the matplotlib axis.
+       The label is only applied to the first segment to prevent legend duplication."""
+    # Flag to ensure label is only applied once
+    first_segment = True
+    original_label = label
+    
     for phi_min, phi_max, psi_min, psi_max in regions:
+        current_label = original_label if first_segment else ""
         ax.fill_between(
             [phi_min, phi_max], 
             psi_min, 
@@ -106,11 +112,9 @@ def plot_regions(ax, regions, color, label):
             color=color, 
             alpha=0.2, 
             zorder=0,
-            label=label if label else ""
+            label=current_label
         )
-    if label:
-        # Clear label after first drawing to avoid duplicate legends
-        label = None
+        first_segment = False
     return label
 
 
