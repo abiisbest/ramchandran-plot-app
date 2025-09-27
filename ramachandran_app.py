@@ -176,6 +176,7 @@ def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
             return
             
         total_allowed_percent = allowed_count / total_count * 100
+        disallowed_percent = disallowed_count / total_count * 100
 
         # -----------------------------
         # Plotting the Regions and Points
@@ -248,11 +249,11 @@ def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
             f"{allowed_count} points (Core + Allowed)"
         )
         
-        # Display Outlier/Disallowed
+        # Display Outlier/Disallowed: NOW SHOWING PERCENTAGE
         col3.metric(
             "⚠️ Outlier/Disallowed", 
-            f"{disallowed_count}", 
-            f"({disallowed_count/total_count*100:.2f}%) points"
+            f"{disallowed_percent:.2f}%", 
+            f"{disallowed_count} points"
         )
         
         # -----------------------------
