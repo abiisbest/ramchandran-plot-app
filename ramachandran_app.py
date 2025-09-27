@@ -4,21 +4,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from io import StringIO
+import requests
 
 st.set_page_config(page_title="Ramachandran Plot App", layout="wide")
-st.title("📊 Ramachandran Plot Generator")
+st.title("📊 Ramachandran Plot Generator (Mobile-Friendly)")
 
-# File upload
-uploaded_file = st.file_uploader("Upload a PDB file", type=["pdb"])
+# -----------------------------
+# PDB ID input
+# -----------------------------
+pdb_id = st.text_input("Enter PDB ID (e.g., 1UBQ)").upper()
 chain_id = st.text_input("Enter chain ID (default = A)", "A")
 
 def ramachandran_plot(pdb_file, chain_id="A"):
     try:
-        # Convert bytes to string for PDBParser
-        pdb_text = StringIO(pdb_file.getvalue().decode("utf-8"))
-        
         parser = PDBParser(QUIET=True)
-        structure = parser.get_structure("protein", pdb_text)
+        structure = parser.get_structure("protein", pdb_file)
         model = structure[0]
 
         if chain_id not in model:
@@ -41,14 +41,16 @@ def ramachandran_plot(pdb_file, chain_id="A"):
                 psi.append(np.degrees(ps))
                 residues.append(residues_list[i] if i < len(residues_list) else "UNK")
 
+        # -----------------------------
         # Plot
+        # -----------------------------
         fig, ax = plt.subplots(figsize=(6,6))
         ax.scatter(phi, psi, c="blue", s=25, alpha=0.6, label="Residues")
         ax.set_xlim(-180, 180)
         ax.set_ylim(-180, 180)
         ax.set_xlabel("Phi (φ)")
         ax.set_ylabel("Psi (ψ)")
-        ax.set_title("Ramachandran Plot")
+        ax.set_title(f"Ramachandran Plot: {pdb_id} Chain {chain_id}")
 
         allowed_regions = [
             {"phi": (-160, -40), "psi": (-80, 50)},  # Beta sheet
@@ -68,7 +70,9 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         ax.legend()
         st.pyplot(fig)
 
+        # -----------------------------
         # Stats
+        # -----------------------------
         allowed_count = 0
         for ph, ps in zip(phi, psi):
             for reg in allowed_regions:
@@ -80,7 +84,9 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         st.write(f"✅ Allowed residues: {allowed_count} ({allowed_count/len(phi)*100:.2f}%)")
         st.write(f"❌ Disallowed residues: {len(phi)-allowed_count}")
 
+        # -----------------------------
         # Table & CSV
+        # -----------------------------
         df = pd.DataFrame({
             "Residue": residues,
             "Phi (°)": phi,
@@ -92,12 +98,21 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         st.download_button(
             label="📥 Download Phi/Psi angles as CSV",
             data=csv,
-            file_name='phi_psi_angles.csv',
+            file_name=f'{pdb_id}_phi_psi.csv',
             mime='text/csv'
         )
 
     except Exception as e:
         st.error(f"Error processing PDB file: {e}")
 
-if uploaded_file:
-    ramachandran_plot(uploaded_file, chain_id)
+# -----------------------------
+# Fetch PDB and run
+# -----------------------------
+if pdb_id:
+    url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
+    response = requests.get(url)
+    if response.status_code == 200:
+        pdb_file = StringIO(response.text)
+        ramachandran_plot(pdb_file, chain_id)
+    else:
+        st.error("PDB ID not found!")
