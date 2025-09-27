@@ -69,20 +69,19 @@ def get_regions(residue):
 
 def is_allowed(residue, phi, psi):
     """Checks if a phi/psi pair falls within the 'Allowed' region boundary."""
-    _, allowed_regions = get_regions(residue)
+    core_regions, allowed_regions = get_regions(residue)
     
-    # Check against the core regions first, then the allowed regions
-    for phi_min, phi_max, psi_min, psi_max in allowed_regions:
-        if phi_min <= phi <= phi_max and psi_min <= psi <= psi_max:
-            return "Allowed"
-    
-    # Check against the tighter CORE regions (useful for the plotting logic,
-    # but for simple 'allowed' count, just use the wider set)
-    core_regions, _ = get_regions(residue)
+    # 1. Check against the tighter CORE regions first
     for phi_min, phi_max, psi_min, psi_max in core_regions:
          if phi_min <= phi <= phi_max and psi_min <= psi <= psi_max:
             return "Core"
 
+    # 2. If not in Core, check against the wider ALLOWED regions
+    for phi_min, phi_max, psi_min, psi_max in allowed_regions:
+        if phi_min <= phi <= phi_max and psi_min <= psi <= psi_max:
+            return "Allowed"
+
+    # 3. Otherwise, it's an Outlier
     return "Disallowed"
 
 # -----------------------------
