@@ -157,6 +157,8 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         allowed_count = categories.count("Allowed") + core_count # Core points are also allowed
         disallowed_count = categories.count("Disallowed")
         total_count = len(phi)
+        
+        total_allowed_percent = allowed_count / total_count * 100
 
         # -----------------------------
         # Plotting the Regions and Points
@@ -221,18 +223,22 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         col1, col2, col3 = st.columns(3)
         
         col1.metric("Total Residues Checked", total_count)
+        
+        # Display the Total Allowed Percentage (Core + Allowed)
         col2.metric(
-            "✅ Favored/Core Percentage", 
-            f"{core_count/total_count*100:.2f}%", 
-            f"{core_count} points"
+            "✅ Total Allowed Percentage", 
+            f"{total_allowed_percent:.2f}%", 
+            f"{allowed_count} points (Core + Allowed)"
         )
+        
+        # Display Outlier/Disallowed
         col3.metric(
             "⚠️ Outlier/Disallowed", 
             f"{disallowed_count}", 
             f"({disallowed_count/total_count*100:.2f}%) points"
         )
         
-        st.markdown(f"***Note:*** *The total percentage of **Allowed** residues (Core + Allowed) is **{allowed_count/total_count*100:.2f}**%*")
+        # The previous markdown note is now redundant and removed.
 
         # -----------------------------
         # Table & CSV
@@ -274,3 +280,4 @@ if pdb_id:
             st.error(f"PDB ID '{pdb_id}' not found or inaccessible. Status code: {response.status_code}")
     except requests.exceptions.RequestException as e:
         st.error(f"Network error while fetching PDB ID: {e}")
+
