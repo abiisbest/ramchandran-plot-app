@@ -3,17 +3,25 @@ from Bio.PDB import PDBParser, PPBuilder
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from io import StringIO
+from io import StringIO, BytesIO
 import requests
 
 st.set_page_config(page_title="Ramachandran Plot App", layout="wide")
 st.title("📊 Ramachandran Plot Generator (High Accuracy)")
 
 # -----------------------------
-# PDB ID input
+# INPUT SECTION
 # -----------------------------
-pdb_id = st.text_input("Enter PDB ID (e.g., 1UBQ)").upper()
-chain_id = st.text_input("Enter chain ID (default = A)", "A")
+
+st.subheader("1. Input Protein Structure")
+
+# PDB ID input
+col_id, col_chain = st.columns([3, 1])
+pdb_id = col_id.text_input("Enter PDB ID (e.g., 1UBQ) or leave blank to upload file").upper()
+chain_id = col_chain.text_input("Enter Chain ID (default = A)", "A")
+
+# File upload input
+uploaded_file = st.file_uploader("OR Upload a PDB file (.pdb)", type=["pdb"])
 
 # ----------------------------------------------------
 # 1. ACCURATE RAMACHANDRAN REGIONS (CORE & ALLOWED)
@@ -109,17 +117,18 @@ def plot_regions(ax, regions, color, label):
 # -----------------------------
 # Ramachandran function
 # -----------------------------
-def ramachandran_plot(pdb_file, chain_id="A"):
+def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
     st.markdown("---")
-    st.subheader(f"Results for PDB: **{pdb_id}**, Chain: **{chain_id}**")
+    st.subheader(f"Results for Structure: **{source_name}**, Chain: **{chain_id}**")
     
     try:
+        # Note: BioPython PDBParser can handle file-like objects (StringIO/BytesIO)
         parser = PDBParser(QUIET=True)
         structure = parser.get_structure("protein", pdb_file)
         model = structure[0]
 
         if chain_id not in model:
-            st.error(f"Chain '{chain_id}' not found. Please check the PDB entry for valid chains.")
+            st.error(f"Chain '{chain_id}' not found in structure '{source_name}'. Please check the PDB entry for valid chains.")
             return
 
         chain = model[chain_id]
@@ -144,7 +153,7 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         residues = residues_list
         
         if not phi:
-            st.warning("No valid phi/psi angles found for this chain (it might be too short or broken).")
+            st.warning(f"No valid phi/psi angles found for chain '{chain_id}' in '{source_name}'. It might be too short or broken.")
             return
             
         # -----------------------------
@@ -158,6 +167,10 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         disallowed_count = categories.count("Disallowed")
         total_count = len(phi)
         
+        if total_count == 0:
+            st.warning("No residues analyzed.")
+            return
+            
         total_allowed_percent = allowed_count / total_count * 100
 
         # -----------------------------
@@ -208,7 +221,7 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         ax.set_yticks(np.arange(-180, 181, 60))
         ax.set_xlabel("Phi (φ) [degrees]")
         ax.set_ylabel("Psi (ψ) [degrees]")
-        ax.set_title(f"Ramachandran Plot: {pdb_id} Chain {chain_id}", fontsize=14)
+        ax.set_title(f"Ramachandran Plot: {source_name} Chain {chain_id}", fontsize=14)
         ax.grid(True, linestyle='--', alpha=0.6)
         ax.axhline(0, color='gray', linewidth=0.5)
         ax.axvline(0, color='gray', linewidth=0.5)
@@ -238,8 +251,6 @@ def ramachandran_plot(pdb_file, chain_id="A"):
             f"({disallowed_count/total_count*100:.2f}%) points"
         )
         
-        # The previous markdown note is now redundant and removed.
-
         # -----------------------------
         # Table & CSV
         # -----------------------------
@@ -254,10 +265,10 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         st.dataframe(df, use_container_width=True)
 
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
+        st.download_button(.
             label="📥 Download Phi/Psi angles as CSV",
             data=csv,
-            file_name=f'{pdb_id}_{chain_id}_phi_psi.csv',
+            file_name=f'{source_name}_{chain_id}_phi_psi.csv',
             mime='text/csv'
         )
 
@@ -265,19 +276,34 @@ def ramachandran_plot(pdb_file, chain_id="A"):
         st.error(f"An error occurred during plot generation: {e}")
 
 # -----------------------------
-# Fetch PDB and run
+# Execution Logic (Fetch PDB or use uploaded file)
 # -----------------------------
-if pdb_id:
+
+if uploaded_file is not None:
+    # 1. Handle File Upload
+    st.info(f"Using uploaded file: {uploaded_file.name}")
+    try:
+        # Read the uploaded file contents into a string buffer
+        bytes_data = uploaded_file.getvalue()
+        pdb_file = BytesIO(bytes_data)
+        
+        # Determine source name for display and file saving
+        file_name = uploaded_file.name.split('.')[0]
+        ramachandran_plot(pdb_file, chain_id, source_name=file_name)
+    except Exception as e:
+        st.error(f"Error reading uploaded file: {e}")
+
+elif pdb_id:
+    # 2. Handle PDB ID Fetch
     url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
-    st.info(f"Fetching PDB file from {url}...")
+    st.info(f"Fetching PDB file from RCSB: {url}...")
     
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             pdb_file = StringIO(response.text)
-            ramachandran_plot(pdb_file, chain_id)
+            ramachandran_plot(pdb_file, chain_id, source_name=pdb_id)
         else:
             st.error(f"PDB ID '{pdb_id}' not found or inaccessible. Status code: {response.status_code}")
     except requests.exceptions.RequestException as e:
         st.error(f"Network error while fetching PDB ID: {e}")
-
