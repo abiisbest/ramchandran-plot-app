@@ -265,7 +265,7 @@ def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
         st.dataframe(df, use_container_width=True)
 
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(.
+        st.download_button(
             label="📥 Download Phi/Psi angles as CSV",
             data=csv,
             file_name=f'{source_name}_{chain_id}_phi_psi.csv',
