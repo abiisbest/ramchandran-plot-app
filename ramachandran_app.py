@@ -3,6 +3,7 @@ from Bio.PDB import PDBParser, PPBuilder
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from io import StringIO
 
 st.set_page_config(page_title="Ramachandran Plot App", layout="wide")
 st.title("📊 Ramachandran Plot Generator")
@@ -13,9 +14,11 @@ chain_id = st.text_input("Enter chain ID (default = A)", "A")
 
 def ramachandran_plot(pdb_file, chain_id="A"):
     try:
-        # Pass the uploaded file directly to PDBParser
+        # Convert bytes to string for PDBParser
+        pdb_text = StringIO(pdb_file.getvalue().decode("utf-8"))
+        
         parser = PDBParser(QUIET=True)
-        structure = parser.get_structure("protein", pdb_file)
+        structure = parser.get_structure("protein", pdb_text)
         model = structure[0]
 
         if chain_id not in model:
@@ -23,7 +26,6 @@ def ramachandran_plot(pdb_file, chain_id="A"):
             return
 
         chain = model[chain_id]
-
         ppb = PPBuilder()
         phi_psi = []
         residues_list = []
@@ -39,7 +41,7 @@ def ramachandran_plot(pdb_file, chain_id="A"):
                 psi.append(np.degrees(ps))
                 residues.append(residues_list[i] if i < len(residues_list) else "UNK")
 
-        # Plot Ramachandran
+        # Plot
         fig, ax = plt.subplots(figsize=(6,6))
         ax.scatter(phi, psi, c="blue", s=25, alpha=0.6, label="Residues")
         ax.set_xlim(-180, 180)
@@ -97,6 +99,5 @@ def ramachandran_plot(pdb_file, chain_id="A"):
     except Exception as e:
         st.error(f"Error processing PDB file: {e}")
 
-# Run function if file uploaded
 if uploaded_file:
     ramachandran_plot(uploaded_file, chain_id)
