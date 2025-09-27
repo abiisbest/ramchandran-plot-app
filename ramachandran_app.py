@@ -283,9 +283,11 @@ if uploaded_file is not None:
     # 1. Handle File Upload
     st.info(f"Using uploaded file: {uploaded_file.name}")
     try:
-        # Read the uploaded file contents into a string buffer
+        # Read the uploaded file contents as bytes
         bytes_data = uploaded_file.getvalue()
-        pdb_file = BytesIO(bytes_data)
+        # Decode bytes to string, then wrap in StringIO for PDBParser
+        string_data = bytes_data.decode("utf-8")
+        pdb_file = StringIO(string_data)
         
         # Determine source name for display and file saving
         file_name = uploaded_file.name.split('.')[0]
