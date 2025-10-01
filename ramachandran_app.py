@@ -7,7 +7,7 @@ from io import StringIO, BytesIO
 import requests
 
 st.set_page_config(page_title="Ramachandran Plot App", layout="wide")
-st.title("📊 Ramachandran Plot Generator (High Accuracy)")
+st.title("📊 Ramachandran Plot Generator by Abijeet and Yathish")
 
 # --- [YOUR CONSTANTS AND HELPER FUNCTIONS - UNCHANGED] ---
 
