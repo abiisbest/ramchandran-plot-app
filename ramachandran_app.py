@@ -9,20 +9,6 @@ import requests
 st.set_page_config(page_title="Ramachandran Plot App", layout="wide")
 st.title("📊 Ramachandran Plot Generator (High Accuracy)")
 
-# -----------------------------
-# INPUT SECTION
-# -----------------------------
-
-st.subheader("1. Input Protein Structure")
-
-# PDB ID input
-col_id, col_chain = st.columns([3, 1])
-pdb_id = col_id.text_input("Enter PDB ID (e.g., 1UBQ) or leave blank to upload file").upper()
-chain_id = col_chain.text_input("Enter Chain ID (default = A)", "A")
-
-# File upload input
-uploaded_file = st.file_uploader("OR Upload a PDB file (.pdb)", type=["pdb"])
-
 # ----------------------------------------------------
 # 1. ACCURATE RAMACHANDRAN REGIONS (CORE & ALLOWED)
 #    These boundaries are approximated based on statistical data (e.g., MolProbity/PROCHECK)
@@ -81,7 +67,7 @@ def is_allowed(residue, phi, psi):
     
     # 1. Check against the tighter CORE regions first
     for phi_min, phi_max, psi_min, psi_max in core_regions:
-         if phi_min <= phi <= phi_max and psi_min <= psi <= psi_max:
+        if phi_min <= phi <= phi_max and psi_min <= psi <= psi_max:
             return "Core"
 
     # 2. If not in Core, check against the wider ALLOWED regions
@@ -98,7 +84,7 @@ def is_allowed(residue, phi, psi):
 
 def plot_regions(ax, regions, color, label):
     """Draws rectangular Ramachandran regions on the matplotlib axis.
-       The label is only applied to the first segment to prevent legend duplication."""
+    The label is only applied to the first segment to prevent legend duplication."""
     # Flag to ensure label is only applied once
     first_segment = True
     original_label = label
@@ -208,7 +194,7 @@ def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
         for category, color in color_map.items():
             subset = data_df[data_df['category'] == category]
             if not subset.empty:
-                 ax.scatter(
+                ax.scatter(
                     subset['phi'], 
                     subset['psi'], 
                     c=color, 
@@ -318,36 +304,52 @@ def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
         st.error(f"An error occurred during plot generation: {e}")
 
 # -----------------------------
-# Execution Logic (Fetch PDB or use uploaded file)
+# EXECUTION LOGIC WITH FORM & SUBMIT BUTTON
 # -----------------------------
+st.subheader("1. Input Protein Structure")
 
-if uploaded_file is not None:
-    # 1. Handle File Upload
-    st.info(f"Using uploaded file: {uploaded_file.name}")
-    try:
-        # Read the uploaded file contents as bytes
-        bytes_data = uploaded_file.getvalue()
-        # Decode bytes to string, then wrap in StringIO for PDBParser
-        string_data = bytes_data.decode("utf-8")
-        pdb_file = StringIO(string_data)
-        
-        # Determine source name for display and file saving
-        file_name = uploaded_file.name.split('.')[0]
-        ramachandran_plot(pdb_file, chain_id, source_name=file_name)
-    except Exception as e:
-        st.error(f"Error reading uploaded file: {e}")
-
-elif pdb_id:
-    # 2. Handle PDB ID Fetch
-    url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
-    st.info(f"Fetching PDB file from RCSB: {url}...")
+# Wrap inputs and button in a form
+with st.form("input_form"):
     
-    try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            pdb_file = StringIO(response.text)
-            ramachandran_plot(pdb_file, chain_id, source_name=pdb_id)
-        else:
-            st.error(f"PDB ID '{pdb_id}' not found or inaccessible. Status code: {response.status_code}")
-    except requests.exceptions.RequestException as e:
-        st.error(f"Network error while fetching PDB ID: {e}")
+    # PDB ID input
+    col_id, col_chain = st.columns([3, 1])
+    pdb_id = col_id.text_input("Enter PDB ID (e.g., 1UBQ) or leave blank to upload file").upper()
+    chain_id = col_chain.text_input("Enter Chain ID (default = A)", "A")
+    
+    # File upload input
+    uploaded_file = st.file_uploader("OR Upload a PDB file (.pdb)", type=["pdb"])
+    
+    # Submit button
+    submit_button = st.form_submit_button(label="Generate Plot")
+
+# Check if the submit button was clicked
+if submit_button:
+    if uploaded_file is not None:
+        # Handle File Upload
+        st.info(f"Using uploaded file: {uploaded_file.name}")
+        try:
+            bytes_data = uploaded_file.getvalue()
+            string_data = bytes_data.decode("utf-8")
+            pdb_file = StringIO(string_data)
+            
+            file_name = uploaded_file.name.split('.')[0]
+            ramachandran_plot(pdb_file, chain_id, source_name=file_name)
+        except Exception as e:
+            st.error(f"Error reading uploaded file: {e}")
+
+    elif pdb_id:
+        # Handle PDB ID Fetch
+        url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
+        st.info(f"Fetching PDB file from RCSB: {url}...")
+        
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                pdb_file = StringIO(response.text)
+                ramachandran_plot(pdb_file, chain_id, source_name=pdb_id)
+            else:
+                st.error(f"PDB ID '{pdb_id}' not found or inaccessible. Status code: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            st.error(f"Network error while fetching PDB ID: {e}")
+    else:
+        st.warning("Please enter a PDB ID or upload a PDB file to proceed.")
