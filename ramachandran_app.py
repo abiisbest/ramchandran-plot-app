@@ -9,7 +9,11 @@ import requests
 st.set_page_config(page_title="Ramachandran Plot App", layout="wide")
 st.title("📊 Ramachandran Plot Generator by Abijeet and Yathish")
 
-# --- Constants and Helper Functions ---
+# --- Initialize session state ---
+if 'plot_data' not in st.session_state:
+    st.session_state.plot_data = None
+
+# --- Constants and Helper Functions (unchanged) ---
 CORE_REGIONS = [
     (-100, -35, -65, -20),
     (-140, -90, 135, 180),
@@ -55,17 +59,15 @@ def plot_regions(ax, regions, color, label):
         first_segment = False
     return label
 
-def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
-    st.markdown("---")
-    st.subheader(f"Results for Structure: **{source_name}**, Chain: **{chain_id}**")
-    
+def generate_and_save_plot_data(pdb_file, chain_id, source_name):
     try:
         parser = PDBParser(QUIET=True)
         structure = parser.get_structure("protein", pdb_file)
         model = structure[0]
         if chain_id not in model:
             st.error(f"Chain '{chain_id}' not found in structure '{source_name}'.")
-            return
+            return None
+        
         chain = model[chain_id]
         ppb = PPBuilder()
         phi_psi = []
@@ -77,99 +79,129 @@ def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
                     phi_psi.append((np.degrees(ph), np.degrees(ps)))
                     residues_list.append(res.get_resname())
         
-        phi, psi = zip(*phi_psi) if phi_psi else ([], [])
-        residues = residues_list
-        if not phi:
+        if not phi_psi:
             st.warning(f"No valid phi/psi angles found for chain '{chain_id}'.")
-            return
+            return None
             
+        phi, psi = zip(*phi_psi)
+        residues = residues_list
         categories = [is_allowed(res, ph, ps) for res, ph, ps in zip(residues, phi, psi)]
-        core_count = categories.count("Core")
-        allowed_count = categories.count("Allowed") + core_count
-        disallowed_count = categories.count("Disallowed")
-        total_count = len(phi)
         
-        if total_count == 0:
-            st.warning("No residues analyzed.")
-            return
-            
-        total_allowed_percent = allowed_count / total_count * 100
-        disallowed_percent = disallowed_count / total_count * 100
-
-        fig, ax = plt.subplots(figsize=(8,8))
-        std_core, std_allowed = get_regions("ALA")
-        plot_regions(ax, std_allowed, 'skyblue', 'Allowed')
-        plot_regions(ax, std_core, 'dodgerblue', 'Favored (Core)')
-        data_df = pd.DataFrame({'phi': phi, 'psi': psi, 'category': categories})
-        color_map = {"Core": "black", "Allowed": "darkorange", "Disallowed": "red"}
-        for category, color in color_map.items():
-            subset = data_df[data_df['category'] == category]
-            if not subset.empty:
-                ax.scatter(subset['phi'], subset['psi'], c=color, s=20, alpha=0.7, zorder=5, label=f'{category} Points')
-        ax.set_xlim(-180, 180)
-        ax.set_ylim(-180, 180)
-        ax.set_xticks(np.arange(-180, 181, 60))
-        ax.set_yticks(np.arange(-180, 181, 60))
-        ax.set_xlabel("Phi (φ) [degrees]")
-        ax.set_ylabel("Psi (ψ) [degrees]")
-        ax.set_title(f"Ramachandran Plot: {source_name} Chain {chain_id}", fontsize=14)
-        ax.grid(True, linestyle='--', alpha=0.6)
-        ax.axhline(0, color='gray', linewidth=0.5)
-        ax.axvline(0, color='gray', linewidth=0.5)
-        ax.legend(loc='lower left', frameon=True)
-        st.pyplot(fig)
-        
-        # Corrected PDF download functionality
-        pdf_buffer = BytesIO()
-        fig.savefig(pdf_buffer, format='pdf', bbox_inches='tight')
-        pdf_buffer.seek(0)  # This is the key line to add
-        st.download_button(
-            label="📥 Download Plot as PDF",
-            data=pdf_buffer,
-            file_name=f'{source_name}_{chain_id}_ramachandran.pdf',
-            mime='application/pdf'
-        )
-        
-        st.subheader("Phi (φ) and Psi (ψ) Dihedral Angles Along Sequence")
-        sequence_index = np.arange(1, total_count + 1)
-        fig2, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
-        ax1.plot(sequence_index, phi, marker='o', linestyle='-', markersize=3, color='dodgerblue', linewidth=1, label="Phi (φ)")
-        ax1.set_ylabel("Phi (φ) [degrees]")
-        ax1.set_title(f"Dihedral Angle Sequence for {source_name} Chain {chain_id}")
-        ax1.set_ylim(-180, 180)
-        ax1.axhline(0, color='gray', linestyle='--', linewidth=0.5)
-        ax1.grid(True, linestyle=':', alpha=0.6)
-        ax1.legend(loc='upper right')
-        ax2.plot(sequence_index, psi, marker='o', linestyle='-', markersize=3, color='darkorange', linewidth=1, label="Psi (ψ)")
-        ax2.set_ylabel("Psi (ψ) [degrees]")
-        ax2.set_xlabel("Residue Index")
-        ax2.set_ylim(-180, 180)
-        ax2.axhline(0, color='gray', linestyle='--', linewidth=0.5)
-        ax2.grid(True, linestyle=':', alpha=0.6)
-        ax2.legend(loc='upper right')
-        step = max(1, total_count // 10)
-        ax2.set_xticks(np.arange(1, total_count + 1, step))
-        plt.tight_layout()
-        st.pyplot(fig2)
-
-        st.subheader("Analysis Summary")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Residues Checked", total_count)
-        col2.metric("✅ Total Allowed Percentage", f"{total_allowed_percent:.2f}%", f"{allowed_count} points (Core + Allowed)")
-        col3.metric("⚠️ Outlier/Disallowed", f"{disallowed_percent:.2f}%", f"{disallowed_count} points")
-        
-        st.subheader("Phi/Psi Data Table")
-        df = pd.DataFrame({"Residue": [f"{res} ({i+1})" for i, res in enumerate(residues)], "Phi (°)": phi, "Psi (°)": psi, "Classification": categories})
-        st.dataframe(df, use_container_width=True)
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(label="📥 Download Phi/Psi angles as CSV", data=csv, file_name=f'{source_name}_{chain_id}_phi_psi.csv', mime='text/csv')
+        plot_data = {
+            'phi': phi,
+            'psi': psi,
+            'residues': residues,
+            'categories': categories,
+            'source_name': source_name,
+            'chain_id': chain_id
+        }
+        return plot_data
 
     except Exception as e:
-        st.error(f"An error occurred during plot generation: {e}")
+        st.error(f"An error occurred during data generation: {e}")
+        return None
 
-# -----------------------------
-# Execution Logic
-# -----------------------------
+def display_ramachandran_results(plot_data):
+    st.markdown("---")
+    st.subheader(f"Results for Structure: **{plot_data['source_name']}**, Chain: **{plot_data['chain_id']}**")
+
+    phi, psi = plot_data['phi'], plot_data['psi']
+    residues, categories = plot_data['residues'], plot_data['categories']
+
+    core_count = categories.count("Core")
+    allowed_count = categories.count("Allowed") + core_count
+    disallowed_count = categories.count("Disallowed")
+    total_count = len(phi)
+
+    total_allowed_percent = allowed_count / total_count * 100
+    disallowed_percent = disallowed_count / total_count * 100
+
+    # --- Main Ramachandran Plot ---
+    fig, ax = plt.subplots(figsize=(8,8))
+    std_core, std_allowed = get_regions("ALA")
+    plot_regions(ax, std_allowed, 'skyblue', 'Allowed')
+    plot_regions(ax, std_core, 'dodgerblue', 'Favored (Core)')
+    data_df = pd.DataFrame({'phi': phi, 'psi': psi, 'category': categories})
+    color_map = {"Core": "black", "Allowed": "darkorange", "Disallowed": "red"}
+    for category, color in color_map.items():
+        subset = data_df[data_df['category'] == category]
+        if not subset.empty:
+            ax.scatter(subset['phi'], subset['psi'], c=color, s=20, alpha=0.7, zorder=5, label=f'{category} Points')
+    ax.set_xlim(-180, 180)
+    ax.set_ylim(-180, 180)
+    ax.set_xticks(np.arange(-180, 181, 60))
+    ax.set_yticks(np.arange(-180, 181, 60))
+    ax.set_xlabel("Phi (φ) [degrees]")
+    ax.set_ylabel("Psi (ψ) [degrees]")
+    ax.set_title(f"Ramachandran Plot: {plot_data['source_name']} Chain {plot_data['chain_id']}", fontsize=14)
+    ax.grid(True, linestyle='--', alpha=0.6)
+    ax.axhline(0, color='gray', linewidth=0.5)
+    ax.axvline(0, color='gray', linewidth=0.5)
+    ax.legend(loc='lower left', frameon=True)
+    st.pyplot(fig)
+    
+    # Corrected PDF download functionality
+    pdf_buffer = BytesIO()
+    fig.savefig(pdf_buffer, format='pdf', bbox_inches='tight')
+    pdf_buffer.seek(0)
+    st.download_button(
+        label="📥 Download Plot as PDF",
+        data=pdf_buffer,
+        file_name=f'{plot_data["source_name"]}_{plot_data["chain_id"]}_ramachandran.pdf',
+        mime='application/pdf'
+    )
+    plt.close(fig) # Close the figure to free up memory
+
+    # --- Phi/Psi Dihedral Angle Plot ---
+    st.subheader("Phi (φ) and Psi (ψ) Dihedral Angles Along Sequence")
+    sequence_index = np.arange(1, total_count + 1)
+    fig2, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
+    ax1.plot(sequence_index, phi, marker='o', linestyle='-', markersize=3, color='dodgerblue', linewidth=1, label="Phi (φ)")
+    ax1.set_ylabel("Phi (φ) [degrees]")
+    ax1.set_title(f"Dihedral Angle Sequence for {plot_data['source_name']} Chain {plot_data['chain_id']}")
+    ax1.set_ylim(-180, 180)
+    ax1.axhline(0, color='gray', linestyle='--', linewidth=0.5)
+    ax1.grid(True, linestyle=':', alpha=0.6)
+    ax1.legend(loc='upper right')
+    ax2.plot(sequence_index, psi, marker='o', linestyle='-', markersize=3, color='darkorange', linewidth=1, label="Psi (ψ)")
+    ax2.set_ylabel("Psi (ψ) [degrees]")
+    ax2.set_xlabel("Residue Index")
+    ax2.set_ylim(-180, 180)
+    ax2.axhline(0, color='gray', linestyle='--', linewidth=0.5)
+    ax2.grid(True, linestyle=':', alpha=0.6)
+    ax2.legend(loc='upper right')
+    step = max(1, total_count // 10)
+    ax2.set_xticks(np.arange(1, total_count + 1, step))
+    plt.tight_layout()
+    st.pyplot(fig2)
+    plt.close(fig2)
+
+    # --- Analysis Summary ---
+    st.subheader("Analysis Summary")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Residues Checked", total_count)
+    col2.metric("✅ Total Allowed Percentage", f"{total_allowed_percent:.2f}%", f"{allowed_count} points (Core + Allowed)")
+    col3.metric("⚠️ Outlier/Disallowed", f"{disallowed_percent:.2f}%", f"{disallowed_count} points")
+    
+    # --- Phi/Psi Data Table ---
+    st.subheader("Phi/Psi Data Table")
+    df = pd.DataFrame({
+        "Residue": [f"{res} ({i+1})" for i, res in enumerate(residues)],
+        "Phi (°)": phi,
+        "Psi (°)": psi,
+        "Classification": categories
+    })
+    st.dataframe(df, use_container_width=True)
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Download Phi/Psi angles as CSV",
+        data=csv,
+        file_name=f'{plot_data["source_name"]}_{plot_data["chain_id"]}_phi_psi.csv',
+        mime='text/csv'
+    )
+
+
+# --- Execution Logic (Fetch PDB or use uploaded file) ---
 st.subheader("1. Input Protein Structure")
 
 with st.form(key='my_form'):
@@ -186,11 +218,11 @@ if submit_button:
             bytes_data = uploaded_file.getvalue()
             string_data = bytes_data.decode("utf-8")
             pdb_file = StringIO(string_data)
-            
             file_name = uploaded_file.name.split('.')[0]
-            ramachandran_plot(pdb_file, chain_id, source_name=file_name)
+            st.session_state.plot_data = generate_and_save_plot_data(pdb_file, chain_id, source_name=file_name)
         except Exception as e:
             st.error(f"Error reading uploaded file: {e}")
+            st.session_state.plot_data = None
             
     elif pdb_id:
         url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
@@ -199,10 +231,16 @@ if submit_button:
             response = requests.get(url, timeout=10)
             if response.status_code == 200:
                 pdb_file = StringIO(response.text)
-                ramachandran_plot(pdb_file, chain_id, source_name=pdb_id)
+                st.session_state.plot_data = generate_and_save_plot_data(pdb_file, chain_id, source_name=pdb_id)
             else:
                 st.error(f"PDB ID '{pdb_id}' not found or inaccessible. Status code: {response.status_code}")
+                st.session_state.plot_data = None
         except requests.exceptions.RequestException as e:
             st.error(f"Network error while fetching PDB ID: {e}")
+            st.session_state.plot_data = None
     else:
         st.warning("Please enter a PDB ID or upload a PDB file to generate the plot.")
+
+# Display results if they exist in session state
+if st.session_state.plot_data:
+    display_ramachandran_results(st.session_state.plot_data)
