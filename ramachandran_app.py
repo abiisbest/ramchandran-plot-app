@@ -1,4 +1,3 @@
-
 import streamlit as st
 from Bio.PDB import PDBParser, PPBuilder
 import matplotlib.pyplot as plt
@@ -10,9 +9,7 @@ import requests
 st.set_page_config(page_title="Ramachandran Plot App", layout="wide")
 st.title("📊 Ramachandran Plot Generator by Abijeet and Yathish")
 
-# --- [YOUR CONSTANTS AND HELPER FUNCTIONS - UNCHANGED] ---
-
-# CORE (Favored) Regions for non-Glycine, non-Proline residues
+# --- Constants and Helper Functions ---
 CORE_REGIONS = [
     (-100, -35, -65, -20),
     (-140, -90, 135, 180),
@@ -20,7 +17,6 @@ CORE_REGIONS = [
     (-140, -90, 100, 125)
 ]
 
-# ALLOWED (Outer boundary) Regions for non-Glycine, non-Proline residues
 ALLOWED_REGIONS = [
     (-140, -20, -100, 15),
     (-180, -60, 90, 180),
@@ -59,7 +55,6 @@ def plot_regions(ax, regions, color, label):
         first_segment = False
     return label
 
-# Ramachandran Plotting Function
 def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
     st.markdown("---")
     st.subheader(f"Results for Structure: **{source_name}**, Chain: **{chain_id}**")
@@ -81,6 +76,7 @@ def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
                 if ph is not None and ps is not None:
                     phi_psi.append((np.degrees(ph), np.degrees(ps)))
                     residues_list.append(res.get_resname())
+        
         phi, psi = zip(*phi_psi) if phi_psi else ([], [])
         residues = residues_list
         if not phi:
@@ -123,6 +119,17 @@ def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
         ax.legend(loc='lower left', frameon=True)
         st.pyplot(fig)
         
+        # Corrected PDF download functionality
+        pdf_buffer = BytesIO()
+        fig.savefig(pdf_buffer, format='pdf', bbox_inches='tight')
+        pdf_buffer.seek(0)  # This is the key line to add
+        st.download_button(
+            label="📥 Download Plot as PDF",
+            data=pdf_buffer,
+            file_name=f'{source_name}_{chain_id}_ramachandran.pdf',
+            mime='application/pdf'
+        )
+        
         st.subheader("Phi (φ) and Psi (ψ) Dihedral Angles Along Sequence")
         sequence_index = np.arange(1, total_count + 1)
         fig2, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
@@ -161,26 +168,18 @@ def ramachandran_plot(pdb_file, chain_id="A", source_name="PDB"):
         st.error(f"An error occurred during plot generation: {e}")
 
 # -----------------------------
-# Execution Logic (Fetch PDB or use uploaded file)
+# Execution Logic
 # -----------------------------
 st.subheader("1. Input Protein Structure")
 
-# Create a form to wrap the inputs and the submit button
 with st.form(key='my_form'):
-    # PDB ID input
     col_id, col_chain = st.columns([3, 1])
     pdb_id = col_id.text_input("Enter PDB ID (e.g., 1UBQ) or leave blank to upload file").upper()
     chain_id = col_chain.text_input("Enter Chain ID (default = A)", "A")
-
-    # File upload input
     uploaded_file = st.file_uploader("OR Upload a PDB file (.pdb)", type=["pdb"])
-
-    # Create the submit button inside the form
     submit_button = st.form_submit_button(label='Generate Plot')
 
-# Check if the submit button was pressed
 if submit_button:
-    # This entire block will only execute if the button is clicked
     if uploaded_file is not None:
         st.info(f"Using uploaded file: {uploaded_file.name}")
         try:
